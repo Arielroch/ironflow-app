@@ -1,4 +1,4 @@
-import { Workout, Exercise, UserStats, WeightEntry, WorkoutSession, CompletedSet } from '../types';
+import { Workout, Exercise, UserStats, WeightEntry, WorkoutSession, CompletedSet, MeasurementEntry } from '../types';
 import { MOCK_WORKOUTS, MOCK_USER_STATS } from '../data';
 import { SMARTWORKOUT_EXERCISES } from '../exerciseLibrary';
 import { supabase } from '../lib/supabase';
@@ -233,6 +233,19 @@ export function getUserStats(): UserStats {
 export function saveUserStatsBase(stats: Partial<UserStats>): void {
   const current = load<UserStats>(KEYS.USER_STATS, MOCK_USER_STATS);
   save(KEYS.USER_STATS, { ...current, ...stats });
+}
+
+export function getMeasurements(): MeasurementEntry[] {
+  const current = load<UserStats>(KEYS.USER_STATS, MOCK_USER_STATS);
+  return current.measurements || [];
+}
+
+export function addMeasurementEntry(entry: MeasurementEntry): void {
+  const list = getMeasurements();
+  const filtered = list.filter(e => e.date !== entry.date);
+  filtered.push(entry);
+  filtered.sort((a, b) => a.date.localeCompare(b.date));
+  saveUserStatsBase({ measurements: filtered });
 }
 
 // ─────────────────────────────────────────────

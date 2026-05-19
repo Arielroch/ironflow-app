@@ -5,9 +5,10 @@ import {
   getWeightHistory, addWeightEntry,
   getWorkoutSessions, saveWorkoutSession,
   getUserStats, saveUserStatsBase,
+  getMeasurements, addMeasurementEntry,
   generateId,
 } from '../store';
-import { Workout, Exercise, WeightEntry, WorkoutSession } from '../types';
+import { Workout, Exercise, WeightEntry, WorkoutSession, MeasurementEntry } from '../types';
 
 // ─────────────────────────────────────────────
 // Workouts
@@ -125,4 +126,28 @@ export function useUserStats() {
   }, [refresh]);
 
   return { stats, refresh };
+}
+
+// ─────────────────────────────────────────────
+// Measurements
+// ─────────────────────────────────────────────
+export function useMeasurements() {
+  const [measurements, setMeasurements] = useState<MeasurementEntry[]>(() => getMeasurements());
+
+  const refresh = useCallback(() => setMeasurements(getMeasurements()), []);
+
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
+
+  const logMeasurement = useCallback((entry: Omit<MeasurementEntry, 'date'>) => {
+    addMeasurementEntry({
+      ...entry,
+      date: new Date().toISOString().split('T')[0],
+    });
+    refresh();
+  }, [refresh]);
+
+  return { measurements, logMeasurement, refresh };
 }

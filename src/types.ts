@@ -31,11 +31,21 @@ export interface UserStats {
   streak: number;
   weeklyVolume: { day: string; value: number; isToday?: boolean }[];
   userImageUrl: string;
+  measurements?: MeasurementEntry[];
 }
 
 export interface WeightEntry {
   date: string; // ISO date string 'YYYY-MM-DD'
   weight: number;
+}
+
+export interface MeasurementEntry {
+  date: string; // ISO date string 'YYYY-MM-DD'
+  bodyFat?: number;
+  chest?: number;
+  arms?: number;
+  waist?: number;
+  legs?: number;
 }
 
 export interface CompletedSet {
