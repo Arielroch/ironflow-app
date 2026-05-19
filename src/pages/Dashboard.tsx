@@ -1,7 +1,8 @@
-import { BarChart, Bar, ResponsiveContainer, XAxis, Cell } from 'recharts';
-import { Weight, Flame, TrendingUp, Play, Timer, Dumbbell } from 'lucide-react';
+import { useState } from 'react';
+import { Play, Flame, Clock, Award, Dumbbell } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStats, useWorkouts, useWorkoutSessions } from '../hooks';
+import { cn } from '@/src/lib/utils';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -9,145 +10,194 @@ export function Dashboard() {
   const { workouts } = useWorkouts();
   const { sessions } = useWorkoutSessions();
 
-  // Find the "next" workout — one not done today, prioritizing longest ago
-  const today = new Date().toISOString().split('T')[0];
+  // Find next workout
+  const todayStr = new Date().toISOString().split('T')[0];
   const todaySessionIds = new Set(
-    sessions.filter(s => s.date.startsWith(today)).map(s => s.workoutId)
+    sessions.filter(s => s.date.startsWith(todayStr)).map(s => s.workoutId)
   );
   const nextWorkout = workouts.find(w => !todaySessionIds.has(w.id)) || workouts[0];
 
-  // Last session info
-  const lastSession = sessions.length > 0 ? sessions[sessions.length - 1] : null;
+  // Generate dynamic week days (Seg a Sex)
+  const daysOfWeek = [];
+  const startOfWeek = new Date();
+  const currentDay = startOfWeek.getDay();
+  // Get Monday date
+  const diff = startOfWeek.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+  startOfWeek.setDate(diff);
+
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
+    const dayLabel = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').substring(0, 3);
+    const dayNum = String(d.getDate()).padStart(2, '0');
+    const isToday = d.toDateString() === new Date().toDateString();
+    
+    daysOfWeek.push({
+      label: dayLabel.charAt(0).toUpperCase() + dayLabel.slice(1),
+      num: dayNum,
+      isToday,
+    });
+  }
+
+  // Calculate stats this week
+  const thisWeekSessions = sessions.filter(s => {
+    const sDate = new Date(s.date);
+    const now = new Date();
+    const oneWeekAgo = new Date(now.setDate(now.getDate() - 7));
+    return sDate >= oneWeekAgo;
+  });
+
+  const weeklyCalories = thisWeekSessions.length * 350; // estimate 350 kcal per session
+  const weeklyDurationSeconds = thisWeekSessions.reduce((sum, s) => sum + (s.durationSeconds || 1800), 0);
+  const hours = Math.floor(weeklyDurationSeconds / 3600);
+  const minutes = Math.floor((weeklyDurationSeconds % 3600) / 60);
+
+  const workoutsRemaining = workouts.length - sessions.filter(s => s.date.startsWith(todayStr)).length;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Quick Stats Bento */}
-      <section className="grid grid-cols-2 gap-4">
-        <div className="glass-card p-5 rounded-xl flex flex-col justify-between h-36 relative overflow-hidden group">
-          <div className="flex items-center justify-between opacity-60">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Peso</span>
-            <Weight size={18} />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-4xl font-mono font-bold text-white tracking-tighter">
-              {stats.weight.toFixed(1)}
-            </span>
-            <span className="text-[10px] font-mono font-bold text-primary-fixed mt-1">
-              {stats.weightChange}
-            </span>
-          </div>
-          <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
-            <Weight size={80} />
-          </div>
-        </div>
-
-        <div className="glass-card p-5 rounded-xl flex flex-col justify-between h-36 relative overflow-hidden group">
-          <div className="flex items-center justify-between opacity-60">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Sequência</span>
-            <Flame size={18} />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-4xl font-mono font-bold text-white tracking-tighter">
-              {stats.streak}
-            </span>
-            <span className="text-[10px] font-mono font-bold text-primary-fixed mt-1 uppercase">
-              Dias Seguidos
-            </span>
-          </div>
-          <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
-            <Flame size={80} />
-          </div>
-        </div>
+    <div className="flex flex-col gap-8">
+      {/* Title greeting */}
+      <section className="space-y-1">
+        <h2 className="font-display font-black text-4xl text-white tracking-tight uppercase italic leading-none">
+          {workoutsRemaining > 0 ? `${workoutsRemaining} restantes!` : 'Tudo feito!'}
+        </h2>
+        <p className="text-on-surface-variant/60 font-mono text-[10px] uppercase tracking-widest pl-0.5">
+          Seu progresso diário
+        </p>
       </section>
 
-      {/* Weekly Progress Chart */}
-      <section className="glass-card p-6 rounded-xl space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-bold text-xl uppercase italic">Volume Semanal</h3>
-          <TrendingUp size={20} className="text-on-surface-variant" />
-        </div>
-        
-        <div className="h-44 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.weeklyVolume}>
-              <XAxis 
-                dataKey="day" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: '#c4c9ac', fontSize: 10, fontWeight: 600 }}
-                dy={10}
-              />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                {stats.weeklyVolume.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.isToday ? '#c3f400' : '#273647'} 
-                    className={entry.isToday ? 'drop-shadow-[0_0_8px_rgba(195,244,0,0.4)]' : ''}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        
-        {lastSession ? (
-          <p className="text-sm text-on-surface-variant leading-relaxed">
-            Último treino: <span className="text-primary-fixed font-bold">{lastSession.workoutName}</span> — {sessions.length} sessão{sessions.length !== 1 ? 'ões' : ''} no total.
-          </p>
-        ) : (
-          <p className="text-sm text-on-surface-variant leading-relaxed">
-            Nenhum treino registrado ainda. <span className="text-primary-fixed font-bold">Comece agora!</span>
-          </p>
-        )}
+      {/* Week Calendar Selector */}
+      <section className="flex gap-2.5 overflow-x-auto no-scrollbar py-1">
+        {daysOfWeek.map((day, idx) => (
+          <div
+            key={idx}
+            className={cn(
+              "flex flex-col items-center justify-center min-w-[62px] h-[78px] rounded-2xl transition-all duration-300",
+              day.isToday
+                ? "bg-primary-fixed text-on-primary-fixed shadow-[0_0_15px_rgba(225,255,0,0.25)] scale-105"
+                : "bg-[#121212] border border-white/5 text-white/50"
+            )}
+          >
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider mb-1">
+              {day.label}
+            </span>
+            <span className={cn(
+              "font-display font-black text-xl tracking-tighter",
+              day.isToday ? "text-black" : "text-white"
+            )}>
+              {day.num}
+            </span>
+          </div>
+        ))}
       </section>
 
-      {/* Next Workout Card */}
+      {/* Next Workout */}
       {nextWorkout && (
-        <section 
-          onClick={() => navigate(`/active-workout/${nextWorkout.id}`)}
-          className="relative overflow-hidden rounded-xl border border-surface-variant bg-surface-container h-52 group cursor-pointer active:scale-[0.98] transition-all"
-        >
-          <img 
-            src="https://images.unsplash.com/photo-1541534741688-6078c65b5a33?q=80&w=800&auto=format&fit=crop" 
-            alt={nextWorkout.name} 
-            className="absolute inset-0 w-full h-full object-cover opacity-20 grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700" 
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
-          
-          <div className="absolute inset-0 p-6 flex flex-col justify-between">
-            <div className="space-y-2">
-              <span className="bg-primary-fixed text-on-primary-fixed font-mono font-bold text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">
-                Próximo
+        <section className="space-y-3">
+          <h3 className="font-mono font-bold text-[10px] text-on-surface-variant uppercase tracking-widest pl-1">
+            Próximo Treino
+          </h3>
+          <div className="relative bg-[#121212] border border-white/5 rounded-[24px] p-6 flex flex-col justify-between h-[210px] overflow-hidden group shadow-lg">
+            <div className="flex flex-col gap-1.5 relative z-10">
+              <span className="text-[10px] font-mono text-primary-fixed font-bold uppercase tracking-wider">
+                Rotina recomendada
               </span>
-              <h2 className="font-display font-extrabold text-2xl text-white tracking-tight leading-none uppercase">
+              <h2 className="font-display font-black text-2xl text-white uppercase tracking-tight italic">
                 {nextWorkout.name}
               </h2>
-            </div>
-            
-            <div className="flex items-center gap-6">
-              {nextWorkout.avgDuration && (
-                <div className="flex items-center gap-2">
-                  <Timer size={16} className="text-primary-fixed" />
-                  <span className="font-mono font-bold text-xs">{nextWorkout.avgDuration} MIN</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Dumbbell size={16} className="text-primary-fixed" />
-                <span className="font-mono font-bold text-xs">{nextWorkout.exercises.length} EXERCÍCIOS</span>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {nextWorkout.exercises.slice(0, 3).map((ex) => (
+                  <span
+                    key={ex.id}
+                    className="px-2.5 py-0.5 bg-[#1c1c1e] rounded-full text-[9px] font-mono font-bold text-on-surface-variant/80 uppercase"
+                  >
+                    {ex.muscleGroup}
+                  </span>
+                ))}
               </div>
+            </div>
+
+            <div className="flex items-end justify-between relative z-10 mt-4">
+              <span className="text-white/60 font-mono font-bold text-xs uppercase">
+                {nextWorkout.avgDuration || 45} MINUTOS
+              </span>
+              <button
+                onClick={() => navigate(`/active-workout/${nextWorkout.id}`)}
+                className="bg-primary-fixed text-on-primary-fixed font-display font-black text-sm px-5 py-2.5 rounded-full uppercase flex items-center gap-1.5 shadow-[0_0_12px_rgba(225,255,0,0.2)] active:scale-95 transition-all hover:scale-105"
+              >
+                <Play size={14} fill="currentColor" />
+                Iniciar
+              </button>
+            </div>
+
+            {/* Subtle background decoration */}
+            <div className="absolute right-[-10px] top-[-10px] opacity-[0.02] group-hover:opacity-[0.04] transition-all duration-700 pointer-events-none">
+              <Dumbbell size={180} />
             </div>
           </div>
         </section>
       )}
 
-      {/* Primary CTA */}
-      <button 
-        onClick={() => navigate(nextWorkout ? `/active-workout/${nextWorkout.id}` : '/workouts')}
-        className="w-full bg-primary-fixed text-on-primary-fixed font-display font-extrabold text-xl h-16 rounded-xl uppercase flex items-center justify-center gap-3 active:scale-95 transition-all shadow-[0_0_20px_rgba(195,244,0,0.15)] group"
-      >
-        Iniciar Treino
-        <Play size={20} fill="currentColor" className="group-hover:translate-x-1 transition-transform" />
-      </button>
+      {/* This Week Panel */}
+      <section className="space-y-3">
+        <h3 className="font-mono font-bold text-[10px] text-on-surface-variant uppercase tracking-widest pl-1">
+          Esta Semana
+        </h3>
+        <div className="bg-[#121212] border border-white/5 rounded-[24px] p-5 flex items-center justify-around gap-4 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-[#1c1c1e] flex items-center justify-center text-primary-fixed border border-white/5">
+              <Flame size={20} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-mono text-on-surface-variant/60 uppercase tracking-wider">Calorias</span>
+              <span className="font-display font-black text-lg text-white tracking-tight uppercase italic">
+                {weeklyCalories} Kcal
+              </span>
+            </div>
+          </div>
+
+          <div className="h-8 w-[1px] bg-white/5" />
+
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-[#1c1c1e] flex items-center justify-center text-primary-fixed border border-white/5">
+              <Clock size={20} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-mono text-on-surface-variant/60 uppercase tracking-wider">Tempo</span>
+              <span className="font-display font-black text-lg text-white tracking-tight uppercase italic">
+                {hours > 0 ? `${hours}h ` : ''}{minutes}m
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Streak Bento mini card */}
+      <section className="grid grid-cols-2 gap-4">
+        <div className="bg-[#121212] border border-white/5 p-5 rounded-[20px] flex items-center gap-4 group">
+          <div className="w-10 h-10 rounded-xl bg-primary-fixed/10 text-primary-fixed flex items-center justify-center">
+            <Flame size={18} />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-wider">Sequência</span>
+            <span className="font-display font-black text-xl text-white tracking-tighter italic">
+              {stats.streak} DIAS
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[#121212] border border-white/5 p-5 rounded-[20px] flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary-fixed/10 text-primary-fixed flex items-center justify-center">
+            <Award size={18} />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[9px] font-mono text-on-surface-variant/50 uppercase tracking-wider">Treinos</span>
+            <span className="font-display font-black text-xl text-white tracking-tighter italic">
+              {sessions.length} TOTAL
+            </span>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
