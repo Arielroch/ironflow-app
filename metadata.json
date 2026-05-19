@@ -1,0 +1,6 @@
+{
+  "name": "IRONFLOW",
+  "description": "Rastreador de treinos de alto desempenho com modo escuro para musculação.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
