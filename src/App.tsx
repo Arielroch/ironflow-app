@@ -10,8 +10,14 @@ import { ActiveWorkout } from './pages/ActiveWorkout';
 import { Editor } from './pages/Editor';
 import { AiGenerator } from './pages/AiGenerator';
 import { motion, AnimatePresence } from 'motion/react';
+import { useEffect } from 'react';
+import { pullFromSupabase } from './store';
 
 export default function App() {
+  useEffect(() => {
+    pullFromSupabase().catch(console.error);
+  }, []);
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-background selection:bg-primary-fixed selection:text-on-primary-fixed">

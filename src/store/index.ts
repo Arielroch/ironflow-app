@@ -1,7 +1,47 @@
 import { Workout, Exercise, UserStats, WeightEntry, WorkoutSession, CompletedSet } from '../types';
 import { MOCK_WORKOUTS, MOCK_USER_STATS } from '../data';
 import { SMARTWORKOUT_EXERCISES } from '../exerciseLibrary';
+import { supabase } from '../lib/supabase';
 
+const DEFAULT_USER_ID = 'default-user-id';
+
+export async function pushToSupabase() {
+  if (!supabase) return;
+  const payload = {
+    user_id: DEFAULT_USER_ID,
+    workouts: getWorkouts(),
+    exercises_library: getExerciseLibrary(),
+    weight_history: getWeightHistory(),
+    workout_sessions: getWorkoutSessions(),
+    user_stats: load<UserStats>(KEYS.USER_STATS, MOCK_USER_STATS),
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabase
+    .from('sync_state')
+    .upsert(payload, { onConflict: 'user_id' });
+    
+  if (error) console.error('Supabase push error:', error);
+}
+
+export async function pullFromSupabase() {
+  if (!supabase) return;
+  const { data, error } = await supabase
+    .from('sync_state')
+    .select('*')
+    .eq('user_id', DEFAULT_USER_ID)
+    .single();
+
+  if (error || !data) return;
+
+  if (data.workouts) save(KEYS.WORKOUTS, data.workouts, false);
+  if (data.exercises_library) save(KEYS.EXERCISES_LIBRARY, data.exercises_library, false);
+  if (data.weight_history) save(KEYS.WEIGHT_HISTORY, data.weight_history, false);
+  if (data.workout_sessions) save(KEYS.WORKOUT_SESSIONS, data.workout_sessions, false);
+  if (data.user_stats) save(KEYS.USER_STATS, data.user_stats, false);
+
+  window.dispatchEvent(new Event('ironflow-sync'));
+}
 // ─────────────────────────────────────────────
 // Storage keys
 // ─────────────────────────────────────────────
@@ -34,8 +74,11 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
-function save<T>(key: string, value: T): void {
+function save<T>(key: string, value: T, sync = true): void {
   localStorage.setItem(key, JSON.stringify(value));
+  if (sync) {
+    pushToSupabase().catch(console.error);
+  }
 }
 
 // ─────────────────────────────────────────────

@@ -17,6 +17,11 @@ export function useWorkouts() {
 
   const refresh = useCallback(() => setWorkouts(getWorkouts()), []);
 
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
+
   const create = useCallback((workout: Omit<Workout, 'id'>) => {
     const newWorkout: Workout = { ...workout, id: generateId() };
     addWorkout(newWorkout);
@@ -45,6 +50,11 @@ export function useExerciseLibrary() {
 
   const refresh = useCallback(() => setExercises(getExerciseLibrary()), []);
 
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
+
   const add = useCallback((exercise: Omit<Exercise, 'id'>) => {
     const newEx: Exercise = { ...exercise, id: generateId() };
     addExerciseToLibrary(newEx);
@@ -62,6 +72,11 @@ export function useWeightHistory() {
   const [history, setHistory] = useState<WeightEntry[]>(() => getWeightHistory());
 
   const refresh = useCallback(() => setHistory(getWeightHistory()), []);
+
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
 
   const logWeight = useCallback((weight: number) => {
     const entry: WeightEntry = {
@@ -83,6 +98,11 @@ export function useWorkoutSessions() {
 
   const refresh = useCallback(() => setSessions(getWorkoutSessions()), []);
 
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
+
   const saveSession = useCallback((session: WorkoutSession) => {
     saveWorkoutSession(session);
     refresh();
@@ -98,6 +118,11 @@ export function useUserStats() {
   const [stats, setStats] = useState(() => getUserStats());
 
   const refresh = useCallback(() => setStats(getUserStats()), []);
+
+  useEffect(() => {
+    window.addEventListener('ironflow-sync', refresh);
+    return () => window.removeEventListener('ironflow-sync', refresh);
+  }, [refresh]);
 
   return { stats, refresh };
 }
