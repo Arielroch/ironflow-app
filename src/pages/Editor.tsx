@@ -63,6 +63,31 @@ export function Editor() {
     setExercises(prev => prev.filter(e => e.id !== exId));
   };
 
+  const toggleSuperSet = (idx: number) => {
+    if (idx === 0) return;
+    setExercises(prev => {
+      const copy = [...prev];
+      const prevEx = copy[idx - 1];
+      const currEx = copy[idx];
+      
+      const currentGroupId = currEx.superSetId;
+      const prevGroupId = prevEx.superSetId;
+      
+      if (currentGroupId && prevGroupId && currentGroupId === prevGroupId) {
+        currEx.superSetId = undefined;
+        const prevStillLinked = copy.some((e, i) => i !== idx - 1 && e.superSetId === prevGroupId);
+        if (!prevStillLinked) {
+          prevEx.superSetId = undefined;
+        }
+      } else {
+        const newGroupId = prevGroupId || generateId();
+        prevEx.superSetId = newGroupId;
+        currEx.superSetId = newGroupId;
+      }
+      return copy;
+    });
+  };
+
   const handleSave = () => {
     if (!name.trim()) {
       alert('Digite um nome para o treino');
@@ -150,63 +175,98 @@ export function Editor() {
         onReorder={setExercises} 
         className="flex flex-col gap-4"
       >
-        {exercises.map((ex) => (
-          <Reorder.Item 
-            key={ex.id} 
-            value={ex}
-            className="glass-card rounded-2xl p-5 flex flex-col gap-6 cursor-grab active:cursor-grabbing active:shadow-2xl"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="text-on-surface-variant/40 hover:text-white transition-colors">
-                  <GripVertical size={20} />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-xl text-white tracking-tight leading-none">{ex.name}</h3>
-                  <span className="text-[10px] font-mono text-on-surface-variant/60 uppercase">{ex.muscleGroup}</span>
-                </div>
-              </div>
-              <button 
-                onClick={() => removeExercise(ex.id)}
-                className="text-on-surface-variant opacity-40 hover:opacity-100 hover:text-red-500 transition-all p-1"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
+        {exercises.map((ex, idx) => {
+          const isGroupedWithPrev = idx > 0 && ex.superSetId && ex.superSetId === exercises[idx - 1].superSetId;
+          const isGroupedWithNext = idx < exercises.length - 1 && ex.superSetId && ex.superSetId === exercises[idx + 1].superSetId;
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Séries</p>
-                <input 
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={ex.sets.length}
-                  onChange={(e) => updateSetsCount(ex.id, Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-                  className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
-                />
+          return (
+            <Reorder.Item 
+              key={ex.id} 
+              value={ex}
+              className={cn(
+                "glass-card rounded-2xl p-5 flex flex-col gap-5 cursor-grab active:cursor-grabbing active:shadow-2xl transition-all duration-300",
+                (isGroupedWithPrev || isGroupedWithNext) && "border-l-4 border-l-primary-fixed pl-4"
+              )}
+            >
+              {isGroupedWithNext && !isGroupedWithPrev && (
+                <div className="flex items-center gap-1.5 text-primary-fixed font-mono text-[9px] uppercase tracking-wider mb-[-8px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-fixed animate-pulse" />
+                  🔥 Super Série / Bi-set
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="text-on-surface-variant/40 hover:text-white transition-colors">
+                    <GripVertical size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-xl text-white tracking-tight leading-none">{ex.name}</h3>
+                    <span className="text-[10px] font-mono text-on-surface-variant/60 uppercase">{ex.muscleGroup}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => removeExercise(ex.id)}
+                  className="text-on-surface-variant opacity-40 hover:opacity-100 hover:text-red-500 transition-all p-1"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
-              <div className="space-y-1.5">
-                <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Reps</p>
-                <input 
-                  type="text"
-                  value={ex.sets[0]?.reps ?? '10'}
-                  onChange={(e) => updateSetField(ex.id, 'reps', e.target.value)}
-                  className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
-                />
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Séries</p>
+                  <input 
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={ex.sets.length}
+                    onChange={(e) => updateSetsCount(ex.id, Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                    className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Reps</p>
+                  <input 
+                    type="text"
+                    value={ex.sets[0]?.reps ?? '10'}
+                    onChange={(e) => updateSetField(ex.id, 'reps', e.target.value)}
+                    className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Desc. (s)</p>
+                  <input 
+                    type="number"
+                    value={ex.restTime}
+                    onChange={(e) => updateSetField(ex.id, 'restTime', e.target.value)}
+                    className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <p className="text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest pl-1">Desc. (s)</p>
-                <input 
-                  type="number"
-                  value={ex.restTime}
-                  onChange={(e) => updateSetField(ex.id, 'restTime', e.target.value)}
-                  className="w-full h-12 bg-surface-container rounded-xl text-center font-mono font-black text-xl text-primary-fixed border border-white/5 focus:border-primary-fixed/50 focus:outline-none transition-colors"
-                />
+
+              {/* Super Set Link Action */}
+              <div className="flex items-center justify-between mt-1 pt-3 border-t border-white/5">
+                {idx > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSuperSet(idx)}
+                    className={cn(
+                      "text-[9px] font-mono font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all",
+                      isGroupedWithPrev
+                        ? "bg-primary-fixed/10 text-primary-fixed border border-primary-fixed/20 shadow-[0_0_8px_rgba(195,244,0,0.15)]"
+                        : "bg-surface-container text-on-surface-variant hover:text-white"
+                    )}
+                  >
+                    {isGroupedWithPrev ? "🔗 Desvincular Super Série" : "🔗 Vincular em Super Série"}
+                  </button>
+                ) : (
+                  <div className="text-[8px] font-mono text-on-surface-variant/30 uppercase tracking-widest pl-1">Primeiro Exercício (Base)</div>
+                )}
               </div>
-            </div>
-          </Reorder.Item>
-        ))}
+            </Reorder.Item>
+          );
+        })}
       </Reorder.Group>
 
       {exercises.length === 0 && (

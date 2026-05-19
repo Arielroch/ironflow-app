@@ -73,6 +73,28 @@ function ExerciseGuide({ exercise }: { exercise: Exercise }) {
   );
 }
 
+function SuperExerciseGuide({ exercises }: { exercises: Exercise[] }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-1overflow-x-auto no-scrollbar">
+        {exercises.map((ex, idx) => (
+          <button 
+            key={ex.id}
+            onClick={() => setActiveIdx(idx)}
+            className={cn(
+              "px-3 py-1.5 rounded-lg font-mono text-[9px] uppercase tracking-wider transition-all flex-shrink-0",
+              idx === activeIdx ? "bg-primary-fixed/20 text-primary-fixed border border-primary-fixed/30" : "bg-surface-container text-on-surface-variant"
+            )}
+          >
+            Guia: {ex.name.split(' ')[0]}
+          </button>
+        ))}
+      </div>
+      <ExerciseGuide exercise={exercises[activeIdx]} />
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────
 interface LiveSet {
@@ -86,6 +108,12 @@ interface LiveExercise {
   sets: LiveSet[];
 }
 
+interface LiveStep {
+  id: string;
+  exercises: LiveExercise[];
+  isSuperSet: boolean;
+}
+
 function buildLiveSets(exercise: Exercise): LiveSet[] {
   const count = exercise.sets.length || 3;
   const template = exercise.sets[0] || { weight: 0, reps: 10 };
@@ -96,27 +124,59 @@ function buildLiveSets(exercise: Exercise): LiveSet[] {
   }));
 }
 
+function buildLiveSteps(exercises: Exercise[]): LiveStep[] {
+  const steps: LiveStep[] = [];
+  let i = 0;
+  while (i < exercises.length) {
+    const ex = exercises[i];
+    const liveEx = { exercise: ex, sets: buildLiveSets(ex) };
+    
+    if (ex.superSetId) {
+      const group: LiveExercise[] = [liveEx];
+      let j = i + 1;
+      while (j < exercises.length && exercises[j].superSetId === ex.superSetId) {
+        group.push({ exercise: exercises[j], sets: buildLiveSets(exercises[j]) });
+        j++;
+      }
+      steps.push({
+        id: ex.superSetId,
+        exercises: group,
+        isSuperSet: true,
+      });
+      i = j;
+    } else {
+      steps.push({
+        id: ex.id,
+        exercises: [liveEx],
+        isSuperSet: false,
+      });
+      i++;
+    }
+  }
+  return steps;
+}
+
 export function ActiveWorkout() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { workouts, update: updateWorkout } = useWorkouts();
+  const { workouts } = useWorkouts();
   const { saveSession } = useWorkoutSessions();
 
   const workout = useMemo(() => workouts.find(w => w.id === id) || workouts[0], [workouts, id]);
 
-  const SESSION_KEY = 'ironflow_active_session';
+  const SESSION_KEY = 'ironflow_active_session_v2';
 
   // ── Load or Initialize State ──
   const [sessionState, setSessionState] = useState<{
     startTime: number;
-    liveExercises: LiveExercise[];
-    activeExerciseIndex: number;
+    liveSteps: LiveStep[];
+    activeStepIndex: number;
   }>(() => {
     const cached = localStorage.getItem(SESSION_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (parsed.workoutId === id) return parsed;
+        if (parsed.workoutId === id && parsed.liveSteps) return parsed;
       } catch (e) {
         // ignore error
       }
@@ -124,12 +184,12 @@ export function ActiveWorkout() {
     return {
       workoutId: id,
       startTime: Date.now(),
-      liveExercises: (workout?.exercises || []).map(ex => ({ exercise: ex, sets: buildLiveSets(ex) })),
-      activeExerciseIndex: 0
+      liveSteps: buildLiveSteps(workout?.exercises || []),
+      activeStepIndex: 0
     };
   });
 
-  const { startTime, liveExercises, activeExerciseIndex } = sessionState;
+  const { startTime, liveSteps, activeStepIndex } = sessionState;
 
   // ── Session timer ──
   const [seconds, setSeconds] = useState(() => Math.floor((Date.now() - startTime) / 1000));
@@ -151,10 +211,10 @@ export function ActiveWorkout() {
     });
   }, [id]);
 
-  const setActiveExerciseIndex = (idx: number | ((prev: number) => number)) => {
+  const setActiveStepIndex = (idx: number | ((prev: number) => number)) => {
     updateSessionState(prev => ({
       ...prev,
-      activeExerciseIndex: typeof idx === 'function' ? idx(prev.activeExerciseIndex) : idx
+      activeStepIndex: typeof idx === 'function' ? idx(prev.activeStepIndex) : idx
     }));
   };
 
@@ -186,53 +246,81 @@ export function ActiveWorkout() {
   // Cleanup
   useEffect(() => () => { if (restRef.current) clearInterval(restRef.current); }, []);
 
-  const currentLive = liveExercises[activeExerciseIndex];
-  const currentExercise = currentLive?.exercise;
+  const currentStep = liveSteps[activeStepIndex];
 
   // ── Mark set complete ──
-  const completeSet = (setIndex: number) => {
-    updateSessionState(prev => ({
-      ...prev,
-      liveExercises: prev.liveExercises.map((le, i) => {
-        if (i !== prev.activeExerciseIndex) return le;
-        const newSets = le.sets.map((s, si) =>
-          si === setIndex ? { ...s, isCompleted: true } : s
-        );
-        return { ...le, sets: newSets };
-      })
-    }));
-    // Start rest timer
-    const restTime = currentExercise?.restTime || 90;
-    startRest(restTime);
+  const completeSet = (exerciseId: string, setIndex: number) => {
+    updateSessionState(prev => {
+      const nextSteps = prev.liveSteps.map((step, idx) => {
+        if (idx !== prev.activeStepIndex) return step;
+        
+        const nextExercises = step.exercises.map(le => {
+          if (le.exercise.id !== exerciseId) return le;
+          const nextSets = le.sets.map((s, si) =>
+            si === setIndex ? { ...s, isCompleted: true } : s
+          );
+          return { ...le, sets: nextSets };
+        });
+        
+        return { ...step, exercises: nextExercises };
+      });
+      
+      // Check if all exercises in this step have completed setIndex
+      const activeStep = nextSteps[prev.activeStepIndex];
+      const allDoneForThisRound = activeStep.exercises.every(le => 
+        le.sets[setIndex] ? le.sets[setIndex].isCompleted : true
+      );
+      
+      if (allDoneForThisRound) {
+        const restTime = Math.max(...activeStep.exercises.map(le => le.exercise.restTime || 90));
+        setTimeout(() => startRest(restTime), 50);
+      }
+      
+      return { ...prev, liveSteps: nextSteps };
+    });
   };
 
-  const updateSetField = (setIndex: number, field: 'weight' | 'reps', value: string) => {
+  const updateSetField = (exerciseId: string, setIndex: number, field: 'weight' | 'reps', value: string) => {
     updateSessionState(prev => ({
       ...prev,
-      liveExercises: prev.liveExercises.map((le, i) => {
-        if (i !== prev.activeExerciseIndex) return le;
-        const newSets = le.sets.map((s, si) =>
-          si === setIndex ? { ...s, [field]: value } : s
-        );
-        return { ...le, sets: newSets };
+      liveSteps: prev.liveSteps.map((step, idx) => {
+        if (idx !== prev.activeStepIndex) return step;
+        const nextExercises = step.exercises.map(le => {
+          if (le.exercise.id !== exerciseId) return le;
+          const nextSets = le.sets.map((s, si) =>
+            si === setIndex ? { ...s, [field]: value } : s
+          );
+          return { ...le, sets: nextSets };
+        });
+        return { ...step, exercises: nextExercises };
       })
     }));
   };
 
-  const addSet = () => {
+  const addSet = (exerciseId: string) => {
     updateSessionState(prev => ({
       ...prev,
-      liveExercises: prev.liveExercises.map((le, i) => {
-        if (i !== prev.activeExerciseIndex) return le;
-        const last = le.sets[le.sets.length - 1] || { weight: '0', reps: '10', isCompleted: false };
-        return { ...le, sets: [...le.sets, { weight: last.weight, reps: last.reps, isCompleted: false }] };
+      liveSteps: prev.liveSteps.map((step, idx) => {
+        if (idx !== prev.activeStepIndex) return step;
+        const nextExercises = step.exercises.map(le => {
+          if (le.exercise.id !== exerciseId) return le;
+          const last = le.sets[le.sets.length - 1] || { weight: '0', reps: '10', isCompleted: false };
+          return { ...le, sets: [...le.sets, { weight: last.weight, reps: last.reps, isCompleted: false }] };
+        });
+        return { ...step, exercises: nextExercises };
       })
     }));
   };
 
   // ── Total progress ──
-  const totalCompleted = liveExercises.reduce((sum, le) => sum + le.sets.filter(s => s.isCompleted).length, 0);
-  const totalSets = liveExercises.reduce((sum, le) => sum + le.sets.length, 0);
+  const totalCompleted = liveSteps.reduce(
+    (sum, step) => sum + step.exercises.reduce((esum, le) => esum + le.sets.filter(s => s.isCompleted).length, 0),
+    0
+  );
+  const totalSets = liveSteps.reduce(
+    (sum, step) => sum + step.exercises.reduce((esum, le) => esum + le.sets.length, 0),
+    0
+  );
   const totalProgress = totalSets > 0 ? (totalCompleted / totalSets) * 100 : 0;
 
   // ── Finish workout ──
@@ -240,20 +328,22 @@ export function ActiveWorkout() {
     const completedSets: CompletedSet[] = [];
     let totalVolume = 0;
 
-    liveExercises.forEach(le => {
-      le.sets.forEach((s, si) => {
-        if (s.isCompleted) {
-          const w = parseFloat(s.weight) || 0;
-          const r = parseFloat(String(s.reps)) || 0;
-          totalVolume += w * r;
-          completedSets.push({
-            exerciseId: le.exercise.id,
-            exerciseName: le.exercise.name,
-            setIndex: si,
-            weight: w,
-            reps: r,
-          });
-        }
+    liveSteps.forEach(step => {
+      step.exercises.forEach(le => {
+        le.sets.forEach((s, si) => {
+          if (s.isCompleted) {
+            const w = parseFloat(s.weight) || 0;
+            const r = parseFloat(String(s.reps)) || 0;
+            totalVolume += w * r;
+            completedSets.push({
+              exerciseId: le.exercise.id,
+              exerciseName: le.exercise.name,
+              setIndex: si,
+              weight: w,
+              reps: r,
+            });
+          }
+        });
       });
     });
 
@@ -289,6 +379,8 @@ export function ActiveWorkout() {
     navigate('/workouts');
   };
 
+  const maxSetsInCurrentStep = currentStep ? Math.max(...currentStep.exercises.map(le => le.sets.length)) : 0;
+
   return (
     <div className="flex flex-col gap-8 pb-32">
       {/* Session Header */}
@@ -305,26 +397,32 @@ export function ActiveWorkout() {
       </div>
 
       {/* Exercise Tabs */}
-      {liveExercises.length > 0 && (
+      {liveSteps.length > 0 && (
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {liveExercises.map((le, idx) => {
-            const done = le.sets.filter(s => s.isCompleted).length;
-            const isActive = idx === activeExerciseIndex;
+          {liveSteps.map((step, idx) => {
+            const done = step.exercises.reduce((sum, le) => sum + le.sets.filter(s => s.isCompleted).length, 0);
+            const total = step.exercises.reduce((sum, le) => sum + le.sets.length, 0);
+            const isActive = idx === activeStepIndex;
+            
+            const stepName = step.isSuperSet 
+              ? `Bi-Set: ${step.exercises.map(le => le.exercise.name.split(' ')[0]).join(' + ')}`
+              : step.exercises[0].exercise.name;
+
             return (
               <button
-                key={le.exercise.id}
-                onClick={() => setActiveExerciseIndex(idx)}
+                key={step.id}
+                onClick={() => setActiveStepIndex(idx)}
                 className={cn(
                   "flex-shrink-0 px-3 py-1.5 rounded-full font-mono font-bold text-[10px] uppercase tracking-widest transition-all",
                   isActive
                     ? "bg-primary-fixed text-on-primary-fixed"
-                    : done === le.sets.length && le.sets.length > 0
+                    : done === total && total > 0
                       ? "bg-surface-variant text-primary-fixed/60"
                       : "bg-surface-container text-on-surface-variant hover:text-white"
                 )}
               >
-                {idx + 1}. {le.exercise.name.split(' ')[0]}
-                {done > 0 && <span className="ml-1 opacity-70">({done}/{le.sets.length})</span>}
+                {idx + 1}. {stepName}
+                {done > 0 && <span className="ml-1 opacity-70">({done}/{total})</span>}
               </button>
             );
           })}
@@ -332,118 +430,136 @@ export function ActiveWorkout() {
       )}
 
       {/* Exercise Focus Area */}
-      {currentExercise ? (
+      {currentStep ? (
         <section className="flex flex-col gap-4">
           <div className="flex justify-between items-end px-1">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-mono font-bold text-primary-fixed uppercase tracking-wider mb-1">Exercício Atual</span>
-              <h2 className="font-display font-extrabold text-3xl text-white tracking-tight leading-none">
-                {currentExercise.name}
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-[10px] font-mono font-bold text-primary-fixed uppercase tracking-wider mb-1">
+                {currentStep.isSuperSet ? '🔥 Super Série Ativa' : 'Exercício Atual'}
+              </span>
+              <h2 className="font-display font-extrabold text-2xl text-white tracking-tight leading-tight uppercase italic break-words">
+                {currentStep.isSuperSet 
+                  ? currentStep.exercises.map(le => le.exercise.name).join(' + ')
+                  : currentStep.exercises[0].exercise.name
+                }
               </h2>
             </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-mono font-bold text-on-surface-variant uppercase tracking-wider mb-1">Séries</span>
-              <span className="font-mono font-black text-xl text-white tracking-tighter">
-                {currentLive.sets.filter(s => s.isCompleted).length} <span className="text-on-surface-variant/40">/ {currentLive.sets.length}</span>
-              </span>
-              <div className="flex items-center gap-1 mt-1 text-primary-fixed/80 bg-primary-fixed/10 px-2 py-0.5 rounded-full border border-primary-fixed/20">
-                <TimerIcon size={10} />
-                <span className="font-mono font-bold text-[9px] uppercase tracking-widest">{currentExercise.restTime}s pausa</span>
+            <div className="flex flex-col items-end flex-shrink-0 ml-4">
+              <span className="text-[10px] font-mono font-bold text-on-surface-variant uppercase tracking-wider mb-1">Descanso</span>
+              <div className="flex items-center gap-1 mt-1 text-primary-fixed/80 bg-primary-fixed/10 px-2 py-1 rounded-full border border-primary-fixed/20">
+                <TimerIcon size={12} />
+                <span className="font-mono font-bold text-[9px] uppercase tracking-widest">
+                  {Math.max(...currentStep.exercises.map(le => le.exercise.restTime || 90))}s
+                </span>
               </div>
             </div>
           </div>
 
           {/* Exercise Video Guide */}
-          <ExerciseGuide exercise={currentExercise} />
+          {currentStep.isSuperSet ? (
+            <SuperExerciseGuide exercises={currentStep.exercises.map(le => le.exercise)} />
+          ) : (
+            <ExerciseGuide exercise={currentStep.exercises[0].exercise} />
+          )}
 
           {/* Set Tracking Table */}
-          <div className="flex flex-col gap-3 mt-4">
-            {/* Header */}
-            <div className="grid grid-cols-12 gap-4 px-4">
-              <div className="col-span-2 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">SÉRIE</div>
-              <div className="col-span-4 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">PESO (KG)</div>
-              <div className="col-span-3 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">REPS</div>
-              <div className="col-span-3"></div>
-            </div>
+          <div className="flex flex-col gap-6 mt-4">
+            {currentStep.exercises.map((le, exIndex) => (
+              <div key={le.exercise.id} className="flex flex-col gap-3 bg-surface-container/20 p-4 rounded-2xl border border-white/5">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-mono font-black text-sm text-primary-fixed uppercase">
+                    {currentStep.isSuperSet ? `EXERCÍCIO ${exIndex + 1}: ${le.exercise.name}` : 'Séries'}
+                  </span>
+                </div>
+                
+                {/* Header */}
+                <div className="grid grid-cols-12 gap-4 px-4">
+                  <div className="col-span-2 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">SÉRIE</div>
+                  <div className="col-span-4 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">PESO (KG)</div>
+                  <div className="col-span-3 text-[9px] font-mono font-bold text-on-surface-variant uppercase tracking-widest">REPS</div>
+                  <div className="col-span-3"></div>
+                </div>
 
-            {/* Rows */}
-            {currentLive.sets.map((set, setIndex) => {
-              const isCompleted = set.isCompleted;
-              const isActive = !isCompleted && currentLive.sets.slice(0, setIndex).every(s => s.isCompleted);
+                {/* Rows */}
+                {le.sets.map((set, setIndex) => {
+                  const isCompleted = set.isCompleted;
+                  const isActive = !isCompleted && le.sets.slice(0, setIndex).every(s => s.isCompleted);
 
-              return (
-                <motion.div
-                  key={setIndex}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: setIndex * 0.05 }}
-                  className={cn(
-                    "grid grid-cols-12 items-center gap-4 p-4 glass-card rounded-xl transition-all duration-300",
-                    isActive && "glow-active scale-[1.02] border-primary-fixed/40",
-                    isCompleted && "opacity-40 grayscale"
-                  )}
-                >
-                  <div className={cn(
-                    "col-span-2 font-mono font-black text-xl tracking-tighter",
-                    isActive ? "text-primary-fixed" : "text-white"
-                  )}>
-                    {setIndex + 1}
-                  </div>
-                  
-                  <div className="col-span-4">
-                    {isActive || !isCompleted ? (
-                      <input 
-                        type="number" 
-                        value={set.weight}
-                        onChange={(e) => updateSetField(setIndex, 'weight', e.target.value)}
-                        disabled={isCompleted}
-                        className="w-full bg-surface-container-highest border-b-2 border-primary-fixed text-white font-mono font-black text-xl text-center py-1 focus:outline-none focus:bg-surface-variant transition-colors disabled:opacity-40"
-                      />
-                    ) : (
-                      <div className="font-mono font-bold text-xl text-center text-white/80">{set.weight}</div>
-                    )}
-                  </div>
-
-                  <div className="col-span-3">
-                    {isActive || !isCompleted ? (
-                      <input 
-                        type="text" 
-                        inputMode="text"
-                        value={set.reps}
-                        onChange={(e) => updateSetField(setIndex, 'reps', e.target.value)}
-                        disabled={isCompleted}
-                        className="w-full bg-surface-container-highest border-b-2 border-primary-fixed text-white font-mono font-black text-xl text-center py-1 focus:outline-none focus:bg-surface-variant transition-colors disabled:opacity-40"
-                      />
-                    ) : (
-                      <div className="font-mono font-bold text-xl text-center text-white/80">{set.reps}</div>
-                    )}
-                  </div>
-
-                  <div className="col-span-3 flex justify-end">
-                    <button 
-                      onClick={() => !isCompleted && completeSet(setIndex)}
-                      disabled={isCompleted}
+                  return (
+                    <motion.div
+                      key={setIndex}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: setIndex * 0.05 }}
                       className={cn(
-                        "w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 active:scale-90",
-                        isActive ? "border-primary-fixed text-primary-fixed shadow-[0_0_10px_rgba(195,244,0,0.2)]" : "border-on-surface-variant/20 text-on-surface-variant/20",
-                        isCompleted && "bg-primary-fixed border-primary-fixed text-on-primary-fixed opacity-100"
+                        "grid grid-cols-12 items-center gap-4 p-4 glass-card rounded-xl transition-all duration-300",
+                        isActive && "glow-active scale-[1.02] border-primary-fixed/40",
+                        isCompleted && "opacity-40 grayscale"
                       )}
                     >
-                      <Check size={20} className="stroke-[3]" />
-                    </button>
-                  </div>
-                </motion.div>
-              );
-            })}
+                      <div className={cn(
+                        "col-span-2 font-mono font-black text-xl tracking-tighter",
+                        isActive ? "text-primary-fixed" : "text-white"
+                      )}>
+                        {setIndex + 1}
+                      </div>
+                      
+                      <div className="col-span-4">
+                        {isActive || !isCompleted ? (
+                          <input 
+                            type="number" 
+                            value={set.weight}
+                            onChange={(e) => updateSetField(le.exercise.id, setIndex, 'weight', e.target.value)}
+                            disabled={isCompleted}
+                            className="w-full bg-surface-container-highest border-b-2 border-primary-fixed text-white font-mono font-black text-xl text-center py-1 focus:outline-none focus:bg-surface-variant transition-colors disabled:opacity-40"
+                          />
+                        ) : (
+                          <div className="font-mono font-bold text-xl text-center text-white/80">{set.weight}</div>
+                        )}
+                      </div>
 
-            {/* Add Set */}
-            <button
-              onClick={addSet}
-              className="flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-outline-variant/40 text-on-surface-variant/60 hover:text-primary-fixed hover:border-primary-fixed/40 transition-all font-mono font-bold text-[10px] uppercase tracking-widest"
-            >
-              <Plus size={14} strokeWidth={3} />
-              Adicionar Série
-            </button>
+                      <div className="col-span-3">
+                        {isActive || !isCompleted ? (
+                          <input 
+                            type="text" 
+                            inputMode="text"
+                            value={set.reps}
+                            onChange={(e) => updateSetField(le.exercise.id, setIndex, 'reps', e.target.value)}
+                            disabled={isCompleted}
+                            className="w-full bg-surface-container-highest border-b-2 border-primary-fixed text-white font-mono font-black text-xl text-center py-1 focus:outline-none focus:bg-surface-variant transition-colors disabled:opacity-40"
+                          />
+                        ) : (
+                          <div className="font-mono font-bold text-xl text-center text-white/80">{set.reps}</div>
+                        )}
+                      </div>
+
+                      <div className="col-span-3 flex justify-end">
+                        <button 
+                          onClick={() => !isCompleted && completeSet(le.exercise.id, setIndex)}
+                          disabled={isCompleted}
+                          className={cn(
+                            "w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all duration-300 active:scale-95",
+                            isActive ? "border-primary-fixed text-primary-fixed shadow-[0_0_10px_rgba(195,244,0,0.2)]" : "border-on-surface-variant/20 text-on-surface-variant/20",
+                            isCompleted && "bg-primary-fixed border-primary-fixed text-on-primary-fixed opacity-100"
+                          )}
+                        >
+                          <Check size={20} className="stroke-[3]" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+
+                {/* Add Set */}
+                <button
+                  onClick={() => addSet(le.exercise.id)}
+                  className="flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-outline-variant/40 text-on-surface-variant/60 hover:text-primary-fixed hover:border-primary-fixed/40 transition-all font-mono font-bold text-[10px] uppercase tracking-widest mt-1"
+                >
+                  <Plus size={14} strokeWidth={3} />
+                  Adicionar Série
+                </button>
+              </div>
+            ))}
           </div>
         </section>
       ) : (
@@ -470,7 +586,7 @@ export function ActiveWorkout() {
                     fill="none" stroke="currentColor" 
                     strokeWidth="4" 
                     strokeDasharray="150" 
-                    strokeDashoffset={150 - (restSecondsLeft / (currentExercise?.restTime || 90)) * 150}
+                    strokeDashoffset={150 - (restSecondsLeft / (Math.max(...currentStep.exercises.map(le => le.exercise.restTime || 90)))) * 150}
                     strokeLinecap="round"
                     className="text-primary-fixed transition-all duration-1000"
                   />
@@ -504,9 +620,9 @@ export function ActiveWorkout() {
 
       {/* Action Buttons */}
       <div className="flex flex-col gap-3 pt-4">
-        {activeExerciseIndex < liveExercises.length - 1 ? (
+        {activeStepIndex < liveSteps.length - 1 ? (
           <button 
-            onClick={() => setActiveExerciseIndex(i => i + 1)}
+            onClick={() => setActiveStepIndex(i => i + 1)}
             className="w-full bg-primary-fixed text-on-primary-fixed h-16 rounded-xl font-display font-black text-2xl tracking-tighter uppercase flex items-center justify-center gap-3 active:scale-95 transition-all shadow-xl hover:opacity-90"
           >
             Próximo Exercício
