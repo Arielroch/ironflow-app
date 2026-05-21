@@ -202,11 +202,41 @@ export function ActiveWorkout() {
     return () => clearInterval(interval);
   }, [startTime]);
 
+  // ── Sync with Watch Simulator ──
+  useEffect(() => {
+    const handleWatchUpdate = () => {
+      const cached = localStorage.getItem(SESSION_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.workoutId === id) {
+            setSessionState(parsed);
+          } else {
+            navigate('/workouts');
+          }
+        } catch (e) {
+          // ignore
+        }
+      } else {
+        navigate('/workouts');
+      }
+    };
+
+    window.addEventListener('storage', handleWatchUpdate);
+    window.addEventListener('ironflow-watch-update', handleWatchUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleWatchUpdate);
+      window.removeEventListener('ironflow-watch-update', handleWatchUpdate);
+    };
+  }, [id, navigate]);
+
   // ── Persist state changes ──
   const updateSessionState = useCallback((updater: (prev: typeof sessionState) => typeof sessionState) => {
     setSessionState(prev => {
       const next = updater(prev);
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...next, workoutId: id }));
+      window.dispatchEvent(new Event('ironflow-watch-update'));
       return next;
     });
   }, [id]);
@@ -359,6 +389,7 @@ export function ActiveWorkout() {
 
     saveSession(session);
     localStorage.removeItem(SESSION_KEY);
+    window.dispatchEvent(new Event('ironflow-watch-update'));
     navigate('/workouts');
   };
 
@@ -368,6 +399,7 @@ export function ActiveWorkout() {
         <p className="font-mono text-on-surface-variant">Treino não encontrado</p>
         <button onClick={() => {
           localStorage.removeItem(SESSION_KEY);
+          window.dispatchEvent(new Event('ironflow-watch-update'));
           navigate('/workouts');
         }} className="font-mono text-primary-fixed">Voltar</button>
       </div>
@@ -376,6 +408,7 @@ export function ActiveWorkout() {
 
   const handleAbandon = () => {
     localStorage.removeItem(SESSION_KEY);
+    window.dispatchEvent(new Event('ironflow-watch-update'));
     navigate('/workouts');
   };
 

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -9,13 +9,20 @@ import { Progress } from './pages/Progress';
 import { ActiveWorkout } from './pages/ActiveWorkout';
 import { Editor } from './pages/Editor';
 import { AiGenerator } from './pages/AiGenerator';
+import { WatchSimulator } from './components/WatchSimulator';
 import { motion, AnimatePresence } from 'motion/react';
-import { useEffect } from 'react';
 import { pullFromSupabase } from './store';
 
 export default function App() {
+  const [isWatchOpen, setIsWatchOpen] = useState(false);
+
   useEffect(() => {
+    // Sync with Supabase on mount
     pullFromSupabase().catch(console.error);
+
+    const handleToggle = () => setIsWatchOpen(prev => !prev);
+    window.addEventListener('ironflow-toggle-watch', handleToggle);
+    return () => window.removeEventListener('ironflow-toggle-watch', handleToggle);
   }, []);
 
   return (
@@ -36,6 +43,9 @@ export default function App() {
         </main>
 
         <BottomNav />
+
+        {/* Apple Watch Simulator */}
+        <WatchSimulator isOpen={isWatchOpen} onClose={() => setIsWatchOpen(false)} />
       </div>
     </BrowserRouter>
   );

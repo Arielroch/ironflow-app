@@ -88,22 +88,32 @@ export function getWorkouts(): Workout[] {
   return load<Workout[]>(KEYS.WORKOUTS, []);
 }
 
+function notifyWatch(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('ironflow-watch-update'));
+  }
+}
+
 export function saveWorkouts(workouts: Workout[]): void {
   save(KEYS.WORKOUTS, workouts);
+  notifyWatch();
 }
 
 export function addWorkout(workout: Workout): void {
   const list = getWorkouts();
   save(KEYS.WORKOUTS, [...list, workout]);
+  notifyWatch();
 }
 
 export function updateWorkout(workout: Workout): void {
   const list = getWorkouts().map(w => w.id === workout.id ? workout : w);
   save(KEYS.WORKOUTS, list);
+  notifyWatch();
 }
 
 export function deleteWorkout(id: string): void {
   save(KEYS.WORKOUTS, getWorkouts().filter(w => w.id !== id));
+  notifyWatch();
 }
 
 // ─────────────────────────────────────────────

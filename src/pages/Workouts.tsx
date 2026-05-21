@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Timer, Dumbbell, Trash2, Play, MoreVertical, Sparkles } from 'lucide-react';
+import { Plus, Timer, Dumbbell, Trash2, Play, MoreVertical, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
 import { useWorkouts } from '../hooks';
@@ -17,8 +17,8 @@ export function Workouts() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('Todos');
-
   const categories = ['Todos', 'Força', 'Cardio', 'Hipertrofia'];
+  const [selectedWorkoutPreview, setSelectedWorkoutPreview] = useState<any | null>(null);
 
   const handleDelete = (e: React.MouseEvent | React.TouchEvent, id: string) => {
     e.preventDefault();
@@ -100,7 +100,7 @@ export function Workouts() {
           return (
             <div 
               key={workout.id}
-              onClick={() => navigate(`/active-workout/${workout.id}`)}
+              onClick={() => setSelectedWorkoutPreview(workout)}
               className="relative overflow-hidden rounded-[24px] border border-white/5 bg-[#121212] h-[220px] group cursor-pointer active:scale-[0.98] transition-all duration-300 shadow-lg"
             >
               {/* Cover Image */}
@@ -193,7 +193,7 @@ export function Workouts() {
                       <span>{workout.avgDuration ? `${workout.avgDuration}M` : '45M'}</span>
                     </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/active-workout/${workout.id}`); }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedWorkoutPreview(workout); }}
                       className="w-10 h-10 bg-primary-fixed text-on-primary-fixed rounded-full flex items-center justify-center active:scale-90 transition-transform shadow-[0_0_12px_rgba(225,255,0,0.2)]"
                     >
                       <Play size={16} fill="currentColor" />
@@ -213,6 +213,103 @@ export function Workouts() {
       >
         <Plus size={28} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-300" />
       </button>
+
+      {/* Bottom atmospheric divider */}
+      <div className="relative w-full h-36 rounded-xl overflow-hidden mt-4 group">
+        <img 
+          src="https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop" 
+          alt="Push Limits" 
+          className="w-full h-full object-cover opacity-30 grayscale group-hover:scale-105 transition-transform duration-1000" 
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+          <p className="font-display font-extrabold text-2xl text-white italic tracking-widest px-8 text-center leading-tight">
+            SUPERE SEUS LIMITES
+          </p>
+        </div>
+      </div>
+
+      {/* Workout Preview Modal */}
+      {selectedWorkoutPreview && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 cursor-default"
+          onClick={() => setSelectedWorkoutPreview(null)}
+        >
+          <div 
+            className="bg-[#122131] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh] animate-scale-up"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-6 pb-4 border-b border-white/5 flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-mono font-bold text-primary-fixed uppercase tracking-wider">Visualizar Rotina</span>
+                <h3 className="font-display font-extrabold text-2xl text-white uppercase italic tracking-tight">{selectedWorkoutPreview.name}</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedWorkoutPreview(null)}
+                className="p-2 hover:bg-white/5 rounded-full text-on-surface-variant transition-colors"
+              >
+                <X size={20} className="text-white" />
+              </button>
+            </div>
+
+            {/* Exercises List */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[50vh] scrollbar-thin scrollbar-thumb-white/10">
+              {selectedWorkoutPreview.exercises.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="font-mono text-xs text-on-surface-variant/60 italic">Nenhum exercício cadastrado nesta rotina.</p>
+                </div>
+              ) : (
+                selectedWorkoutPreview.exercises.map((ex, idx) => (
+                  <div key={ex.id} className="bg-[#051424]/40 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-6 h-6 rounded-full bg-primary-fixed/10 text-primary-fixed font-mono text-xs flex items-center justify-center font-bold">
+                          {idx + 1}
+                        </span>
+                        <h4 className="font-sans font-bold text-white text-base">{ex.name}</h4>
+                      </div>
+                      <span className="px-2.5 py-0.5 bg-[#273647] rounded-full text-[9px] font-mono font-bold text-primary-fixed uppercase">
+                        {ex.muscleGroup}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between text-xs font-mono text-[#c4c9ac] border-t border-white/5 pt-2">
+                      <span>{ex.sets.length} séries • {ex.sets[0]?.reps ?? 10} reps</span>
+                      <span className="flex items-center gap-1">
+                        <Timer size={12} className="text-primary-fixed" />
+                        Descanso: {ex.restTime || 90}s
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Action Footer */}
+            <div className="p-6 border-t border-white/5 bg-[#122131] flex gap-3">
+              <button 
+                onClick={() => {
+                  setSelectedWorkoutPreview(null);
+                  navigate(`/editor/${selectedWorkoutPreview.id}`);
+                }}
+                className="flex-1 py-3 border border-white/10 hover:border-white/20 text-white font-mono text-xs font-bold uppercase rounded-xl transition-all active:scale-95"
+              >
+                Editar
+              </button>
+              <button 
+                onClick={() => {
+                  setSelectedWorkoutPreview(null);
+                  navigate(`/active-workout/${selectedWorkoutPreview.id}`);
+                }}
+                className="flex-[2] py-3 bg-primary-fixed text-on-primary-fixed font-mono text-xs font-black uppercase rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(195,244,0,0.15)] hover:shadow-[0_0_25px_rgba(195,244,0,0.25)]"
+              >
+                <Play size={14} fill="currentColor" />
+                Iniciar Treino
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

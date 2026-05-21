@@ -15,6 +15,7 @@ export interface Exercise {
   imageUrl?: string;
   description?: string;
   focusMuscle?: string;
+  superSetId?: string;
 }
 
 export interface Workout {
