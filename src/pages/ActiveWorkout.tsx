@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Timer as TimerIcon, Check, Plus, ArrowRight, Save, X, Film, Dumbbell } from 'lucide-react';
+import { Timer as TimerIcon, Check, Plus, ArrowRight, Save, X, Film, Dumbbell, RotateCw } from 'lucide-react';
 import { formatTime, cn } from '@/src/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useWorkouts, useWorkoutSessions } from '../hooks';
@@ -50,8 +50,16 @@ function ExerciseGuide({ exercise }: { exercise: Exercise }) {
           <button
             onClick={() => setShow(false)}
             className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+            title="Fechar guia"
           >
             <X size={12} />
+          </button>
+          <button
+            onClick={load}
+            className="absolute top-2 right-12 bg-black/60 backdrop-blur-sm text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+            title="Atualizar demonstração"
+          >
+            <RotateCw size={12} />
           </button>
         </div>
       )}
@@ -64,8 +72,16 @@ function ExerciseGuide({ exercise }: { exercise: Exercise }) {
           <button
             onClick={() => setShow(false)}
             className="absolute top-2 left-2 bg-black/40 text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+            title="Fechar guia"
           >
             <X size={12} />
+          </button>
+          <button
+            onClick={load}
+            className="absolute top-2 right-2 bg-black/40 text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+            title="Atualizar demonstração"
+          >
+            <RotateCw size={12} />
           </button>
         </div>
       )}

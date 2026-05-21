@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronRight, Dumbbell } from 'lucide-react';
+import { Search, ChevronRight, Dumbbell, RotateCw } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useExerciseLibrary } from '../hooks';
@@ -106,21 +106,37 @@ const ExerciseCard = ({ ex, isExpanded, onToggle }: {
                 )}
 
                 {!loading && media?.videoUrl && (
-                  <ExerciseVideo
-                    videoUrl={media.videoUrl}
-                    imageUrl={media.imageUrl}
-                    name={ex.name}
-                    className="w-full h-52"
-                    autoPlay
-                  />
+                  <div className="relative">
+                    <ExerciseVideo
+                      videoUrl={media.videoUrl}
+                      imageUrl={media.imageUrl}
+                      name={ex.name}
+                      className="w-full h-52"
+                      autoPlay
+                    />
+                    <button
+                      onClick={load}
+                      className="absolute top-2 right-12 bg-black/60 backdrop-blur-sm text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+                      title="Atualizar demonstração"
+                    >
+                      <RotateCw size={12} />
+                    </button>
+                  </div>
                 )}
 
                 {!loading && !media?.videoUrl && (
-                  <div className="w-full h-32 rounded-xl bg-surface-container-highest flex items-center justify-center border border-white/5">
+                  <div className="relative w-full h-32 rounded-xl bg-surface-container-highest flex items-center justify-center border border-white/5">
                     <div className="flex flex-col items-center gap-2 opacity-40">
                       <Dumbbell size={28} />
                       <span className="text-[10px] font-mono uppercase tracking-wider">Sem mídia</span>
                     </div>
+                    <button
+                      onClick={load}
+                      className="absolute top-2 right-2 bg-black/40 text-white/60 hover:text-white rounded-full p-1.5 transition-colors"
+                      title="Atualizar demonstração"
+                    >
+                      <RotateCw size={12} />
+                    </button>
                   </div>
                 )}
 

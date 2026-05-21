@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { MEDIA_MAP } from '../mediaMap';
 
 export interface ExerciseMedia {
@@ -22,32 +22,54 @@ export function nameToSlug(name: string): string {
 export function useExerciseMedia(muscleGroup: string, exerciseName: string, enabled: boolean, exerciseId?: string) {
   const [media, setMedia] = useState<ExerciseMedia | null>(null);
   const [loading, setLoading] = useState(false);
+  const [version, setVersion] = useState(0);
 
-  const load = useCallback(async () => {
-    if (!enabled || loading || media) return;
-    setLoading(true);
-    
-    // Simulate slight network delay for UI feedback
-    await new Promise(r => setTimeout(r, 150));
-    
-    let result: ExerciseMedia | null = null;
-    
-    if (exerciseId && MEDIA_MAP[exerciseId]) {
-      const data = MEDIA_MAP[exerciseId];
-      if (data.videoUrl || data.imageUrl) {
-        result = {
-          videoUrl: data.videoUrl,
-          imageUrl: data.imageUrl,
-          description: '',
-          howTo: []
-        };
-      }
+  const reload = useCallback(() => {
+    setVersion(v => v + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !exerciseId) {
+      setMedia(null);
+      return;
     }
-    
-    setMedia(result);
-    setLoading(false);
-  }, [enabled, exerciseId, loading, media]);
 
-  return { media, loading, load };
+    let isCurrent = true;
+    
+    async function fetchMedia() {
+      setLoading(true);
+      setMedia(null); // Limpa a mídia antiga imediatamente para não mostrar o gif errado enquanto carrega
+      
+      // Simula um pequeno atraso de rede para feedback visual da interface
+      await new Promise(r => setTimeout(r, 150));
+      
+      if (!isCurrent) return;
+      
+      let result: ExerciseMedia | null = null;
+      
+      if (MEDIA_MAP[exerciseId]) {
+        const data = MEDIA_MAP[exerciseId];
+        if (data.videoUrl || data.imageUrl) {
+          result = {
+            videoUrl: data.videoUrl,
+            imageUrl: data.imageUrl,
+            description: '',
+            howTo: []
+          };
+        }
+      }
+      
+      setMedia(result);
+      setLoading(false);
+    }
+
+    fetchMedia();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [enabled, exerciseId, version]);
+
+  return { media, loading, load: reload };
 }
 
